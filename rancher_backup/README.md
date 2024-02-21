@@ -7,6 +7,7 @@ Requires the following vars to be set (I put them in crontab):
 <li>CHECKMK_MAINTOPS: b64-encoded creds to CheckMK
 <li>CHECKMK_FQDN: FQDN of CheckMK endpoint
 <li>CHECKMK_SITE: CheckMK site code
+<li>RANCHER_CHECKMK_HOSTNAME: CheckMK hostname for Rancher server to be put into downtime
 </ul>
 
 
