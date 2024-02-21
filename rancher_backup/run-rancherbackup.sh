@@ -1,7 +1,8 @@
 #!/bin/bash
 ####################################
 #
-# Backup Rancher to NFS mount script.
+# Backup Rancher to NFS mount script. 
+# Extends/borrows heavily from https://ubuntu.com/server/docs/basic-backup-shell-script
 #
 ####################################
 
@@ -18,7 +19,7 @@ end_maint_time=$(date -Iseconds -d '15 minutes')
 curl --location "http://$CHECKMK_FQDN/$CHECKMK_SITE/check_mk/api/1.0/domain-types/downtime/collections/host" \
 --header 'Content-Type: application/json' \
 --header "Authorization: Basic $CHECKMK_MAINTOPS" \
---data "{\"start_time\": \"$start_maint_time\",\"end_time\": \"$end_maint_time\",\"comment\": \"Nightly Backup\",\"downtime_type\": \"host\",\"host_name\": \"rancher.mattconnley.com\"}"
+--data "{\"start_time\": \"$start_maint_time\",\"end_time\": \"$end_maint_time\",\"comment\": \"Nightly Backup\",\"downtime_type\": \"host\",\"host_name\": \"$RANCHER_CHECKMK_HOSTNAME\"}"
 
 # Stop Rancher
 echo "Stopping Rancher..."
