@@ -93,7 +93,7 @@ Write-Output "Got LUN ID map!"
 
 $exitCode = 0
 
-foreach ($datastore in $datastores | Where-Object Name -eq "MCNAS2_BACKUPTEST" | Sort-Object -Property CapacityGB) {
+foreach ($datastore in $datastores | Sort-Object -Property CapacityGB) {
     try {
             Write-Output "Processing datastore $($datastore.Name)..."
             $vms = Get-VM -Datastore $datastore
