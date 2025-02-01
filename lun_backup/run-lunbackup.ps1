@@ -97,31 +97,31 @@ foreach ($datastore in $datastores | Sort-Object -Property CapacityGB) {
     try {
             Write-Output "Processing datastore $($datastore.Name)..."
             $vms = Get-VM -Datastore $datastore
-            
+
             $fields = @{}
             $datastore.ExtensionData.AvailableField | ForEach-Object{
                 $fields.Add($_.Key,$_.Name)
             }
-            
+
             $doBackup = $datastore.ExtensionData.CustomValue.GetEnumerator() |
             Select-Object @{N='Name';E={$fields.Item($_.Key)}},Value |
             Where-Object { $_.Name -eq "backupLun" } |
             Select-Object -ExpandProperty Value
-        
+
             Write-Output "Do backup: $doBackup"
-        
+
             if ($doBackup -eq "true") {
                 $lunName = $datastore.ExtensionData.CustomValue.GetEnumerator() |
                 Select-Object @{N='Name';E={$fields.Item($_.Key)}},Value |
                 Where-Object { $_.Name -eq "lunName" } |
                 Select-Object -ExpandProperty Value
-            
+
                 Write-Output "LUN Name: $lunName"
                 $lunID = ($lunTable | Where-Object { $_.Name -eq $lunName }).LunID
                 Write-Output "LUN ID: $lunID"
                 $backupTime = $(Get-Date -Format 'yyyyMMdd-HHmmss')
                 Write-Output "Backup Time: $backupTime"
-                
+
                 try {
                     foreach ($vm in $vms) {
                         # Create a snapshot for each VM
@@ -136,31 +136,31 @@ foreach ($datastore in $datastores | Sort-Object -Property CapacityGB) {
                     Write-Error $errMsg
                     throw $errMsg
                 }
-        
+
                 $sid = Get-Sid -session $session -username $sshUser -password $sshPassword
-                
+
                 Write-Output "Adding backup job for LUN $lunName..."
                 $command = "qcli_iscsibackup -A Name=$lunName-$backupTime BackLunImageName=$lunName-$backupTime lunID=$lunID compression=no Protocol=2 path=$outputPath Schedule=1 sid=$sid"
                 $result = Invoke-SSHCommand -SessionId $session.SessionId -Command $command
-                
+
                 if ($result.ExitStatus -gt 0) {
                     $errMsg = "Failed to add backup job for LUN $lunName."
                     Write-Error $errMsg
                     throw $errMsg
                 }
                 Write-Output "Backup job added for LUN $lunName."
-        
+
                 # Wait for the backup job to complete
                 $backupComplete = $false
                 while (-not $backupComplete) {
                     Start-Sleep -Seconds 10
                     $command = "qcli_iscsibackup -l sid=$sid"
                     $result = Invoke-SSHCommand -SessionId $session.SessionId -Command $command
-        
+
                     if ($result.ExitStatus -ne 0) {
                         throw "Failed to retrieve backup job status."
                     }
-        
+
                     $backupComplete = $true
                     foreach ($line in $result.Output) {
                         if ($line -match "Job\d+\s+$lunName-$backupTime\s+Backup\s+\(Schedule:Now\)\s+(Processing|Finished|Failed)") {
@@ -182,7 +182,7 @@ foreach ($datastore in $datastores | Sort-Object -Property CapacityGB) {
 
                 if ($result.ExitStatus -ne 0) {
                     throw "Failed to delete old backup files for LUN $lunName."
-                }                        
+                }
 
                 Write-Output "Processed datastore $($datastore.Name)."
             }
