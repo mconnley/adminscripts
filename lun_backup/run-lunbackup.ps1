@@ -208,14 +208,14 @@ foreach ($datastore in $datastores | Sort-Object -Property CapacityGB) {
 Write-Output "Deleting old backup jobs..."
 $command = "qcli_iscsibackup -l sid=$sid"
 $result = Invoke-SSHCommand -SessionId $session.SessionId -Command $command
-$fiveDaysAgo = (Get-Date).AddDays(-5)
+$maxBackupJobAge = (Get-Date).AddHours(-12)
 
 foreach ($line in $result.Output) {
     if ($line -match "^(Job\d+)\s+(\S+)\s+Backup\s+\(Schedule:Now\)\s+Finished\s+\((\d{4}/\d{2}/\d{2})") {
         $jobId = $matches[1]
         $jobDate = [datetime]::ParseExact($matches[3], 'yyyy/MM/dd', $null)
 
-        if ($jobDate -lt $fiveDaysAgo) {
+        if ($jobDate -lt $maxBackupJobAge) {
             $deleteCommand = "qcli_iscsibackup -d Job=$jobId sid=$sid"
             $deleteResult = Invoke-SSHCommand -SessionId $session.SessionId -Command $deleteCommand
             Write-Output "Deleted backup job $jobId."
