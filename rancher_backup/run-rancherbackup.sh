@@ -13,7 +13,7 @@ archive_file="$hostname-$backup_time.tgz"
 rancher_container_name=$(docker container ls -a --no-trunc -f name=^/rancher$ --format '{{.Names}}')
 rancher_image=$(docker container ls -a --no-trunc -f name=^/rancher$ --format '{{.Image}}')
 start_maint_time=$(date -Iseconds)
-end_maint_time=$(date -Iseconds -d '15 minutes')
+end_maint_time=$(date -Iseconds -d '25 minutes')
 
 # Create checkmk downtime
 curl --location "http://$CHECKMK_FQDN/$CHECKMK_SITE/check_mk/api/1.0/domain-types/downtime/collections/host" \
