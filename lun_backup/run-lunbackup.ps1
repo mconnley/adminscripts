@@ -85,6 +85,30 @@ Write-Output "Confirmed exit from menu..."
 $sid = Get-Sid -session $session -username $sshUser -password $sshPassword -ErrorAction Stop
 Write-Output "Got SID!"
 
+Write-Output "Deleting old backup jobs..."
+$command = "qcli_iscsibackup -l sid=$sid"
+$result = Invoke-SSHCommand -SessionId $session.SessionId -Command $command
+$maxBackupJobAge = (Get-Date).AddHours(-12)
+
+foreach ($line in $result.Output) {
+    if ($line -match "^(Job\d+)\s+(\S+)\s+Backup\s+\(Schedule:Now\)\s+Finished\s+\((\d{4}/\d{2}/\d{2})") {
+        $jobId = $matches[1]
+        $jobDate = [datetime]::ParseExact($matches[3], 'yyyy/MM/dd', $null)
+
+        if ($jobDate -lt $maxBackupJobAge) {
+            $deleteCommand = "qcli_iscsibackup -d Job=$jobId sid=$sid"
+            $deleteResult = Invoke-SSHCommand -SessionId $session.SessionId -Command $deleteCommand
+            Write-Output "Deleted backup job $jobId."
+
+            if ($deleteResult.ExitStatus -ne 0) {
+                throw "Failed to delete backup job $jobId."
+            }
+        }
+    }
+}
+
+Write-Output "Deleted old backup jobs."
+
 $command = "qcli_iscsi -l sid=$sid"
 $result = Invoke-SSHCommand -SessionId $session.SessionId -Command $command -ErrorAction Stop
 
@@ -205,29 +229,6 @@ foreach ($datastore in $datastores | Sort-Object -Property CapacityGB) {
     }
 }
 
-Write-Output "Deleting old backup jobs..."
-$command = "qcli_iscsibackup -l sid=$sid"
-$result = Invoke-SSHCommand -SessionId $session.SessionId -Command $command
-$maxBackupJobAge = (Get-Date).AddHours(-12)
-
-foreach ($line in $result.Output) {
-    if ($line -match "^(Job\d+)\s+(\S+)\s+Backup\s+\(Schedule:Now\)\s+Finished\s+\((\d{4}/\d{2}/\d{2})") {
-        $jobId = $matches[1]
-        $jobDate = [datetime]::ParseExact($matches[3], 'yyyy/MM/dd', $null)
-
-        if ($jobDate -lt $maxBackupJobAge) {
-            $deleteCommand = "qcli_iscsibackup -d Job=$jobId sid=$sid"
-            $deleteResult = Invoke-SSHCommand -SessionId $session.SessionId -Command $deleteCommand
-            Write-Output "Deleted backup job $jobId."
-
-            if ($deleteResult.ExitStatus -ne 0) {
-                throw "Failed to delete backup job $jobId."
-            }
-        }
-    }
-}
-
-Write-Output "Deleted old backup jobs."
 Write-Output "Disconnecting from SSH server..."
 Remove-SSHSession -SessionId $session.SessionId
 
