@@ -5,6 +5,7 @@ param (
     [string]$sshServer,
     [string]$sshUser,
     [string]$sshPassword,
+    [string]$outputHost,
     [string]$outputPath
 )
 
@@ -164,7 +165,7 @@ foreach ($datastore in $datastores | Sort-Object -Property CapacityGB) {
                 $sid = Get-Sid -session $session -username $sshUser -password $sshPassword
 
                 Write-Output "Adding backup job for LUN $lunName..."
-                $command = "qcli_iscsibackup -A Name=$lunName-$backupTime BackLunImageName=$lunName-$backupTime lunID=$lunID compression=no Protocol=2 path=$outputPath Schedule=1 sid=$sid"
+                $command = "qcli_iscsibackup -A Name=$lunName-$backupTime BackLunImageName=$lunName-$backupTime lunID=$lunID compression=no Protocol=0 Server=$outputHost path=$outputPath Schedule=1 sid=$sid"
                 $result = Invoke-SSHCommand -SessionId $session.SessionId -Command $command
 
                 if ($result.ExitStatus -gt 0) {
