@@ -13,7 +13,15 @@ param (
 Import-Module VMware.PowerCLI
 Import-Module Posh-SSH
 
-# Define vCenter connection details
+Function Write-LogMessage {
+    [Alias("LogMsg")]
+    Param(
+        [Parameter(Position = 0, ValueFromPipeline, Mandatory=$false)]
+        $Msg
+    )
+    $Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    Write-Output "$Timestamp - $Msg"
+}
 
 function Get-Sid {
     param (
@@ -63,30 +71,30 @@ function Get-LUN-ID-Map {
 }
 
 # Connect to the vCenter server
-Write-Output "Connecting to vCenter..."
+LogMsg "Connecting to vCenter..."
 Connect-VIServer -Server $vCenterServer -User $vCenterUser -Password $vCenterPassword -ErrorAction Stop
-Write-Output "Connected to vCenter!"
+LogMsg "Connected to vCenter!"
 # Get all datastores
 $datastores = Get-Datastore
-Write-Output "Got Datastores!"
+LogMsg "Got Datastores!"
 
-Write-Output "Connecting to SSH server..."
+LogMsg "Connecting to SSH server..."
 $secureSshPassword = ConvertTo-SecureString $sshPassword -AsPlainText -Force
 $session = New-SSHSession -ComputerName $sshServer -Credential (New-Object System.Management.Automation.PSCredential($sshUser, $secureSshPassword)) -AcceptKey -ErrorAction Stop
-Write-Output "Connected to SSH server!"
+LogMsg "Connected to SSH server!"
 
 $command = "q"
 $result = Invoke-SSHCommand -SessionId $session.SessionId -Command $command -ErrorAction Stop
-Write-Output "Exiting Menu..."
+LogMsg "Exiting Menu..."
 
 $command = "y"
 $result = Invoke-SSHCommand -SessionId $session.SessionId -Command $command -ErrorAction Stop
-Write-Output "Confirmed exit from menu..."
+LogMsg "Confirmed exit from menu..."
 
 $sid = Get-Sid -session $session -username $sshUser -password $sshPassword -ErrorAction Stop
-Write-Output "Got SID!"
+LogMsg "Got SID!"
 
-Write-Output "Deleting old backup jobs..."
+LogMsg "Deleting old backup jobs..."
 $command = "qcli_iscsibackup -l sid=$sid"
 $result = Invoke-SSHCommand -SessionId $session.SessionId -Command $command
 $maxBackupJobAge = (Get-Date).AddHours(-12)
@@ -99,7 +107,7 @@ foreach ($line in $result.Output) {
         if ($jobDate -lt $maxBackupJobAge) {
             $deleteCommand = "qcli_iscsibackup -d Job=$jobId sid=$sid"
             $deleteResult = Invoke-SSHCommand -SessionId $session.SessionId -Command $deleteCommand
-            Write-Output "Deleted backup job $jobId."
+            LogMsg "Deleted backup job $jobId."
 
             if ($deleteResult.ExitStatus -ne 0) {
                 throw "Failed to delete backup job $jobId."
@@ -108,19 +116,19 @@ foreach ($line in $result.Output) {
     }
 }
 
-Write-Output "Deleted old backup jobs."
+LogMsg "Deleted old backup jobs."
 
 $command = "qcli_iscsi -l sid=$sid"
 $result = Invoke-SSHCommand -SessionId $session.SessionId -Command $command -ErrorAction Stop
 
 $lunTable = Get-LUN-ID-Map -session $session -sid $sid -ErrorAction Stop
-Write-Output "Got LUN ID map!"
+LogMsg "Got LUN ID map!"
 
 $exitCode = 0
 
 foreach ($datastore in $datastores | Sort-Object -Property CapacityGB) {
     try {
-            Write-Output "Processing datastore $($datastore.Name)..."
+            LogMsg "Processing datastore $($datastore.Name)..."
             $vms = Get-VM -Datastore $datastore
 
             $fields = @{}
@@ -133,7 +141,7 @@ foreach ($datastore in $datastores | Sort-Object -Property CapacityGB) {
             Where-Object { $_.Name -eq "backupLun" } |
             Select-Object -ExpandProperty Value
 
-            Write-Output "Do backup: $doBackup"
+            LogMsg "Do backup: $doBackup"
 
             if ($doBackup -eq "true") {
                 $lunName = $datastore.ExtensionData.CustomValue.GetEnumerator() |
@@ -141,16 +149,16 @@ foreach ($datastore in $datastores | Sort-Object -Property CapacityGB) {
                 Where-Object { $_.Name -eq "lunName" } |
                 Select-Object -ExpandProperty Value
 
-                Write-Output "LUN Name: $lunName"
+                LogMsg "LUN Name: $lunName"
                 $lunID = ($lunTable | Where-Object { $_.Name -eq $lunName }).LunID
-                Write-Output "LUN ID: $lunID"
+                LogMsg "LUN ID: $lunID"
                 $backupTime = $(Get-Date -Format 'yyyyMMdd-HHmmss')
-                Write-Output "Backup Time: $backupTime"
+                LogMsg "Backup Time: $backupTime"
 
                 try {
                     foreach ($vm in $vms) {
                         # Create a snapshot for each VM
-                        Write-Output "Creating snapshot for VM $($vm.Name)..."
+                        LogMsg "Creating snapshot for VM $($vm.Name)..."
                         New-Snapshot -VM $vm -Name "BackupSnapshot-$backupTime" -Description "Snapshot created for backup purposes" -Quiesce
                         # SSH to the server and run commands
                     }
@@ -158,22 +166,22 @@ foreach ($datastore in $datastores | Sort-Object -Property CapacityGB) {
                 }
                 catch {
                     $errMsg = "Failed to create snapshots for VMs in datastore $($datastore.Name)."
-                    Write-Error $errMsg
+                    LogMsg $errMsg
                     throw $errMsg
                 }
 
                 $sid = Get-Sid -session $session -username $sshUser -password $sshPassword
 
-                Write-Output "Adding backup job for LUN $lunName..."
+                LogMsg "Adding backup job for LUN $lunName..."
                 $command = "qcli_iscsibackup -A Name=$lunName-$backupTime BackLunImageName=$lunName-$backupTime lunID=$lunID compression=no Protocol=0 Server=$outputHost path=$outputPath Schedule=1 sid=$sid"
                 $result = Invoke-SSHCommand -SessionId $session.SessionId -Command $command
 
                 if ($result.ExitStatus -gt 0) {
                     $errMsg = "Failed to add backup job for LUN $lunName."
-                    Write-Error $errMsg
+                    LogMsg $errMsg
                     throw $errMsg
                 }
-                Write-Output "Backup job added for LUN $lunName."
+                LogMsg "Backup job added for LUN $lunName."
 
                 # Wait for the backup job to complete
                 $backupComplete = $false
@@ -191,7 +199,7 @@ foreach ($datastore in $datastores | Sort-Object -Property CapacityGB) {
                         if ($line -match "Job\d+\s+$lunName-$backupTime\s+Backup\s+\(Schedule:Now\)\s+(Processing|Finished|Failed)") {
                             if ($matches[1] -eq "Failed") {
                                 $errMsg = "Backup job for LUN $lunName failed."
-                                Write-Error $errMsg
+                                LogMsg $errMsg
                                 throw $errMsg
                             }
                             if ($matches[1] -ne "Finished") {
@@ -200,7 +208,7 @@ foreach ($datastore in $datastores | Sort-Object -Property CapacityGB) {
                             }
                         }
                     }
-                    Write-Output "Backup job for LUN $lunName is still processing..."
+                    LogMsg "Backup job for LUN $lunName is still processing..."
                 }
                 $command = "find /share/external/sdwa -type f -mmin +1800 -name *$lunName* -delete"
                 $result = Invoke-SSHCommand -SessionId $session.SessionId -Command $command
@@ -209,10 +217,10 @@ foreach ($datastore in $datastores | Sort-Object -Property CapacityGB) {
                     throw "Failed to delete old backup files for LUN $lunName."
                 }
 
-                Write-Output "Processed datastore $($datastore.Name)."
+                LogMsg "Processed datastore $($datastore.Name)."
             }
             else {
-                Write-Output "Skipping datastore $($datastore.Name)..."
+                LogMsg "Skipping datastore $($datastore.Name)..."
             }
     }
     catch {
@@ -221,7 +229,7 @@ foreach ($datastore in $datastores | Sort-Object -Property CapacityGB) {
     finally {
         foreach ($vm in $vms) {
             # Remove the snapshot for each VM
-            Write-Output "Removing snapshot for VM $($vm.Name)..."
+            LogMsg "Removing snapshot for VM $($vm.Name)..."
             $snapshots = Get-Snapshot -VM $vm
             foreach ($snapshot in $snapshots) {
                 Remove-Snapshot -Snapshot $snapshot -Confirm:$false
@@ -230,16 +238,16 @@ foreach ($datastore in $datastores | Sort-Object -Property CapacityGB) {
     }
 }
 
-Write-Output "Disconnecting from SSH server..."
+LogMsg "Disconnecting from SSH server..."
 Remove-SSHSession -SessionId $session.SessionId
 
 
 
 
 # Disconnect from the vCenter server
-Write-Output "Disconnecting from vCenter..."
+LogMsg "Disconnecting from vCenter..."
 Disconnect-VIServer -Server $vCenterServer -Confirm:$false
 
-Write-Output "Complete!"
+LogMsg "Complete!"
 
 exit $exitCode
