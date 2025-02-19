@@ -6,7 +6,8 @@ param (
     [string]$sshUser,
     [string]$sshPassword,
     [string]$outputHost,
-    [string]$outputPath
+    [string]$outputPath,
+    [string]$deletePath
 )
 
 # Load the VMware PowerCLI module
@@ -210,8 +211,8 @@ foreach ($datastore in $datastores | Sort-Object -Property CapacityGB) {
                     }
                     LogMsg "Backup job for LUN $lunName is still processing..."
                 }
-                $command = "find /share/external/sdwa -type f -mmin +1800 -name *$lunName* -delete"
-                $result = Invoke-SSHCommand -SessionId $session.SessionId -Command $command
+                $command = "find $deletePath -type f -mmin +1800 -name *$lunName* -delete"
+                Invoke-Expression $command
 
                 if ($result.ExitStatus -ne 0) {
                     throw "Failed to delete old backup files for LUN $lunName."
